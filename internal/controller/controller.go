@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
 )
 
 type Controller struct {
@@ -290,10 +291,22 @@ func (c *Controller) ensureArgoApplication(ctx context.Context, owner *unstructu
 	}
 	ca, _, _ := unstructured.NestedString(owner.Object, "status", "agentConnection", "caCert")
 	insecure, _, _ := unstructured.NestedBool(owner.Object, "status", "agentConnection", "insecure")
-	values := fmt.Sprintf("agentOnly: true\ntokenSecretRef:\n  name: %s\ninsecureSkipVerify: %t\n", cfg.AgentSecretName, insecure)
-	if ca != "" && !insecure {
-		values += "additionalCA: " + ca + "\n"
+	valuesObject := map[string]interface{}{
+		"agentOnly":          true,
+		"tokenSecretRef":     map[string]interface{}{"name": cfg.AgentSecretName},
+		"insecureSkipVerify": insecure,
 	}
+	if ca != "" && !insecure {
+		// A CA is a multi-line PEM; marshaling the whole values object as YAML
+		// encodes it safely. String concatenation would emit an unindented block
+		// and make the helm values unparseable, so the Argo app would never render.
+		valuesObject["additionalCA"] = ca
+	}
+	valuesBytes, err := yaml.Marshal(valuesObject)
+	if err != nil {
+		return fmt.Errorf("marshal agent chart values: %w", err)
+	}
+	values := string(valuesBytes)
 	app := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "management.loft.sh/v1", "kind": "ArgoCDApplication", "metadata": map[string]interface{}{"name": cfg.ArgoApplicationName, "namespace": cfg.VCINamespace, "labels": labelsObject(owner)},
 		"spec": map[string]interface{}{

@@ -50,6 +50,11 @@ spec:
                   properties:
                     name: {type: string, minLength: 1}
                     namespace: {type: string, minLength: 1}
+                    clusterRef:
+                      type: object
+                      description: Connected cluster to host the Private Node vCluster control plane. When empty, the Platform scheduler chooses.
+                      properties:
+                        cluster: {type: string, minLength: 1}
                     templateRef:
                       type: object
                       required: [name]
