@@ -46,7 +46,7 @@ spec:
               properties:
                 virtualCluster:
                   type: object
-                  required: [templateRef]
+                  required: [templateRef, owner]
                   properties:
                     name: {type: string, minLength: 1}
                     namespace: {type: string, minLength: 1}
@@ -58,6 +58,15 @@ spec:
                     parameters:
                       type: string
                       description: YAML parameter values passed unchanged to the VirtualClusterInstance.
+                    owner:
+                      type: object
+                      description: Platform User or Team resource that owns the generated VirtualClusterInstance.
+                      properties:
+                        user: {type: string, minLength: 1}
+                        team: {type: string, minLength: 1}
+                      oneOf:
+                        - required: [user]
+                        - required: [team]
                     deleteWithProviderCluster:
                       type: boolean
                       default: true
@@ -100,4 +109,3 @@ spec:
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true
-

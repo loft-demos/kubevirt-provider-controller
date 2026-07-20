@@ -34,6 +34,7 @@ func parseConfig(obj *unstructured.Unstructured) (config, error) {
 	c := config{
 		VCIName: get("virtualCluster", "name"), VCINamespace: get("virtualCluster", "namespace"),
 		VCITemplateName: get("virtualCluster", "templateRef", "name"), VCIParameters: get("virtualCluster", "parameters"),
+		VCIOwnerUser: get("virtualCluster", "owner", "user"), VCIOwnerTeam: get("virtualCluster", "owner", "team"),
 		DeleteVCI:            getBool(true, "virtualCluster", "deleteWithProviderCluster"),
 		ConnectedClusterName: get("connectedCluster", "name"), ManagementNamespace: get("connectedCluster", "managementNamespace"),
 		ArgoApplicationName: get("agent", "argoApplicationName"), AgentNamespace: get("agent", "namespace"),
@@ -83,6 +84,9 @@ func parseConfig(obj *unstructured.Unstructured) (config, error) {
 
 	if c.VCITemplateName == "" {
 		return c, fmt.Errorf("spec.virtualCluster.templateRef.name is required")
+	}
+	if (c.VCIOwnerUser == "") == (c.VCIOwnerTeam == "") {
+		return c, fmt.Errorf("spec.virtualCluster.owner must set exactly one of user or team to a Platform resource name")
 	}
 	if c.AgentChartVersion == "" {
 		return c, fmt.Errorf("spec.agent.chart.version is required and must match the Platform version")

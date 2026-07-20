@@ -99,7 +99,10 @@ func (p *platformClient) virtualClusterKubeconfig(ctx context.Context, namespace
 	req := map[string]interface{}{
 		"apiVersion": "management.loft.sh/v1", "kind": "VirtualClusterInstanceKubeConfig",
 		"metadata": map[string]interface{}{"namespace": namespace},
-		"spec":     map[string]interface{}{"certificateTTL": ttl, "clientCert": true},
+		// A token kubeconfig can use the Platform proxy, which is the only API
+		// endpoint guaranteed to exist for a Private Node vCluster. Platform uses
+		// certificateTTL as the generated access key TTL for this request too.
+		"spec": map[string]interface{}{"certificateTTL": ttl, "clientCert": false},
 	}
 	var result struct {
 		Status struct {

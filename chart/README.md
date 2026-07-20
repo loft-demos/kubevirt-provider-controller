@@ -7,8 +7,8 @@ the cluster-wide permissions required to manage vCluster Platform resources.
 
 ```bash
 helm upgrade --install kubevirt-provider-controller \
-  oci://ghcr.io/loft-sh/charts/kubevirt-provider-controller \
-  --version 0.1.0 \
+  oci://ghcr.io/loft-demos/charts/kubevirt-provider-controller \
+  --version 0.1.1 \
   --namespace kubevirt-provider-controller-system \
   --create-namespace
 ```
@@ -24,7 +24,7 @@ image repository when installing a chart published from a fork:
 
 | Value | Default | Description |
 |---|---:|---|
-| `image.repository` | `ghcr.io/loft-sh/kubevirt-provider-controller` | Controller image repository |
+| `image.repository` | `ghcr.io/loft-demos/kubevirt-provider-controller` | Controller image repository |
 | `image.tag` | chart `appVersion` | Optional independent image tag |
 | `image.digest` | empty | Optional immutable digest; takes precedence over tag |
 | `controller.workers` | `2` | Reconciliation workers |
@@ -39,3 +39,7 @@ Helm installs files under `crds/` on first installation but does not upgrade or
 delete CRDs. Review and apply CRD changes explicitly before upgrading across an
 API schema change.
 
+Version 0.1.1 requires `spec.virtualCluster.owner.user` or
+`spec.virtualCluster.owner.team`. Values are Platform resource names, not login
+email addresses. The controller uses a TTL-limited token kubeconfig through the
+Platform proxy, so provider VCIs do not require a direct API endpoint.

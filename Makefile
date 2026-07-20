@@ -1,4 +1,4 @@
-IMAGE ?= ghcr.io/loft-sh/kubevirt-provider-controller:dev
+IMAGE ?= ghcr.io/loft-demos/kubevirt-provider-controller:dev
 GOCACHE ?= /tmp/kubevirt-provider-controller-go-cache
 GOMODCACHE ?= /tmp/kubevirt-provider-controller-go-mod
 

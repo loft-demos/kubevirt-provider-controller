@@ -24,8 +24,11 @@ func TestPlatformSubresources(t *testing.T) {
 			var body map[string]interface{}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			spec := body["spec"].(map[string]interface{})
-			if spec["clientCert"] != true {
-				t.Errorf("clientCert was not requested")
+			if spec["clientCert"] != false {
+				t.Errorf("clientCert must be false so the kubeconfig uses the Platform proxy")
+			}
+			if spec["certificateTTL"] != float64(600) {
+				t.Errorf("certificateTTL = %#v, want 600", spec["certificateTTL"])
 			}
 			response = `{"status":{"kubeConfig":"apiVersion: v1"}}`
 		default:

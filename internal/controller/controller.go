@@ -137,9 +137,6 @@ func (c *Controller) reconcile(ctx context.Context, namespace, name string) erro
 	if !conditionTrue(vci, "VirtualClusterReady") || !conditionTrue(vci, "VirtualClusterOnline") {
 		return c.progress(ctx, obj, "VirtualClusterReady", "False", "WaitingForVirtualCluster", "waiting for the Private Node vCluster to be ready and online")
 	}
-	if !conditionTrue(vci, "ArgoCDIntegrationSynced") {
-		return c.progress(ctx, obj, "ArgoCDReady", "False", "WaitingForArgoCDIntegration", "the v2 Argo CD connector must be configured by the vCluster template and synced")
-	}
 	if err := c.ensureCluster(ctx, obj, cfg); err != nil {
 		return err
 	}
@@ -151,7 +148,7 @@ func (c *Controller) reconcile(ctx context.Context, namespace, name string) erro
 		if err != nil {
 			return err
 		}
-		if err := c.progress(ctx, obj, "EnrollmentSecretStaged", "True", "Staged", "agent credentials were written using a short-lived vCluster client certificate"); err != nil {
+		if err := c.progress(ctx, obj, "EnrollmentSecretStaged", "True", "Staged", "agent credentials were written through the Platform proxy using a short-lived token kubeconfig"); err != nil {
 			return err
 		}
 		return nil
@@ -189,18 +186,53 @@ func (c *Controller) reconcile(ctx context.Context, namespace, name string) erro
 func (c *Controller) ensureVCI(ctx context.Context, owner *unstructured.Unstructured, cfg config) error {
 	existing, err := c.dynamic.Resource(vciGVR).Namespace(cfg.VCINamespace).Get(ctx, cfg.VCIName, metav1.GetOptions{})
 	if err == nil {
-		return ownershipError("VirtualClusterInstance", existing, owner)
+		if err := ownershipError("VirtualClusterInstance", existing, owner); err != nil {
+			return err
+		}
+		return c.ensureVCIOwner(ctx, existing, cfg)
 	}
 	if !apierrors.IsNotFound(err) {
 		return err
 	}
+	spec := map[string]interface{}{
+		"templateRef": map[string]interface{}{"name": cfg.VCITemplateName},
+		"parameters":  cfg.VCIParameters,
+		"owner":       vciOwner(cfg),
+	}
 	vci := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "management.loft.sh/v1", "kind": "VirtualClusterInstance",
 		"metadata": map[string]interface{}{"name": cfg.VCIName, "namespace": cfg.VCINamespace, "labels": labelsObject(owner)},
-		"spec":     map[string]interface{}{"templateRef": map[string]interface{}{"name": cfg.VCITemplateName}, "parameters": cfg.VCIParameters},
+		"spec":     spec,
 	}}
 	_, err = c.dynamic.Resource(vciGVR).Namespace(cfg.VCINamespace).Create(ctx, vci, metav1.CreateOptions{})
+	if err == nil {
+		klog.InfoS("created VirtualClusterInstance", "namespace", cfg.VCINamespace, "name", cfg.VCIName)
+	}
 	return err
+}
+
+func (c *Controller) ensureVCIOwner(ctx context.Context, vci *unstructured.Unstructured, cfg config) error {
+	desired := vciOwner(cfg)
+	current, _, _ := unstructured.NestedMap(vci.Object, "spec", "owner")
+	if reflect.DeepEqual(current, desired) {
+		return nil
+	}
+	copy := vci.DeepCopy()
+	if err := unstructured.SetNestedMap(copy.Object, desired, "spec", "owner"); err != nil {
+		return err
+	}
+	_, err := c.dynamic.Resource(vciGVR).Namespace(cfg.VCINamespace).Update(ctx, copy, metav1.UpdateOptions{})
+	if err == nil {
+		klog.InfoS("updated VirtualClusterInstance owner", "namespace", cfg.VCINamespace, "name", cfg.VCIName)
+	}
+	return err
+}
+
+func vciOwner(cfg config) map[string]interface{} {
+	if cfg.VCIOwnerUser != "" {
+		return map[string]interface{}{"user": cfg.VCIOwnerUser}
+	}
+	return map[string]interface{}{"team": cfg.VCIOwnerTeam}
 }
 
 func (c *Controller) ensureCluster(ctx context.Context, owner *unstructured.Unstructured, cfg config) error {
@@ -216,6 +248,9 @@ func (c *Controller) ensureCluster(ctx context.Context, owner *unstructured.Unst
 		"spec": map[string]interface{}{"displayName": cfg.ConnectedClusterName + " (KubeVirt provider)", "description": "Private Node vCluster dedicated as a KubeVirt control-plane cluster", "networkPeer": true, "unusable": true, "managementNamespace": cfg.ManagementNamespace},
 	}}
 	_, err = c.dynamic.Resource(clusterGVR).Create(ctx, cluster, metav1.CreateOptions{})
+	if err == nil {
+		klog.InfoS("created connected Cluster", "name", cfg.ConnectedClusterName)
+	}
 	return err
 }
 
@@ -238,7 +273,8 @@ func (c *Controller) recordAgentTLS(ctx context.Context, owner *unstructured.Uns
 	copy := owner.DeepCopy()
 	_ = unstructured.SetNestedField(copy.Object, access.CACert, "status", "agentConnection", "caCert")
 	_ = unstructured.SetNestedField(copy.Object, access.Insecure, "status", "agentConnection", "insecure")
-	return c.updateStatus(ctx, owner, copy)
+	_, err := c.updateStatus(ctx, owner, copy)
+	return err
 }
 
 func (c *Controller) ensureArgoApplication(ctx context.Context, owner *unstructured.Unstructured, cfg config) error {
@@ -263,6 +299,9 @@ func (c *Controller) ensureArgoApplication(ctx context.Context, owner *unstructu
 		},
 	}}
 	_, err = c.dynamic.Resource(argoAppGVR).Namespace(cfg.VCINamespace).Create(ctx, app, metav1.CreateOptions{})
+	if err == nil {
+		klog.InfoS("created agent ArgoCDApplication", "namespace", cfg.VCINamespace, "name", cfg.ArgoApplicationName)
+	}
 	return err
 }
 
@@ -288,13 +327,16 @@ func (c *Controller) ensureNodeProvider(ctx context.Context, owner *unstructured
 		return err
 	}
 	_, err = c.dynamic.Resource(nodeProviderGVR).Create(ctx, &unstructured.Unstructured{Object: tpl}, metav1.CreateOptions{})
+	if err == nil {
+		klog.InfoS("created KubeVirt NodeProvider", "name", cfg.NodeProviderName, "cluster", cfg.ConnectedClusterName)
+	}
 	return err
 }
 
 func (c *Controller) ready(ctx context.Context, obj *unstructured.Unstructured, cfg config) error {
 	copy := obj.DeepCopy()
 	setCondition(copy, "VirtualClusterReady", "True", "Ready", "Private Node vCluster is ready and online")
-	setCondition(copy, "ArgoCDReady", "True", "Ready", "v2 Argo CD integration is synced")
+	setCondition(copy, "ArgoCDReady", "True", "Ready", "agent application is synced through the v2 Argo CD integration")
 	setCondition(copy, "AgentApplicationReady", "True", "Synced", "agent application is synced by Argo CD")
 	setCondition(copy, "ConnectedClusterReady", "True", "Initialized", "vCluster is connected as a dedicated, unusable Platform cluster")
 	setCondition(copy, "Ready", "True", "Available", "KubeVirt NodeProvider is available")
@@ -302,7 +344,11 @@ func (c *Controller) ready(ctx context.Context, obj *unstructured.Unstructured, 
 	_ = unstructured.SetNestedField(copy.Object, cfg.ConnectedClusterName, "status", "resources", "connectedCluster")
 	_ = unstructured.SetNestedField(copy.Object, cfg.ArgoApplicationName, "status", "resources", "argoCDApplication")
 	_ = unstructured.SetNestedField(copy.Object, cfg.NodeProviderName, "status", "resources", "nodeProvider")
-	return c.updateStatus(ctx, obj, copy)
+	changed, err := c.updateStatus(ctx, obj, copy)
+	if err == nil && changed {
+		klog.InfoS("KubeVirt provider cluster is ready", "namespace", obj.GetNamespace(), "name", obj.GetName(), "nodeProvider", cfg.NodeProviderName)
+	}
+	return err
 }
 
 func (c *Controller) progress(ctx context.Context, obj *unstructured.Unstructured, typ, status, reason, message string) error {
@@ -311,17 +357,21 @@ func (c *Controller) progress(ctx context.Context, obj *unstructured.Unstructure
 	if typ != "Ready" {
 		setCondition(copy, "Ready", "False", reason, message)
 	}
-	return c.updateStatus(ctx, obj, copy)
+	changed, err := c.updateStatus(ctx, obj, copy)
+	if err == nil && changed {
+		klog.InfoS("reconciliation state changed", "namespace", obj.GetNamespace(), "name", obj.GetName(), "condition", typ, "status", status, "reason", reason, "message", message)
+	}
+	return err
 }
 
-func (c *Controller) updateStatus(ctx context.Context, before, after *unstructured.Unstructured) error {
+func (c *Controller) updateStatus(ctx context.Context, before, after *unstructured.Unstructured) (bool, error) {
 	oldStatus, _, _ := unstructured.NestedMap(before.Object, "status")
 	newStatus, _, _ := unstructured.NestedMap(after.Object, "status")
 	if reflect.DeepEqual(oldStatus, newStatus) {
-		return nil
+		return false, nil
 	}
 	_, err := c.dynamic.Resource(providerClusterGVR).Namespace(after.GetNamespace()).UpdateStatus(ctx, after, metav1.UpdateOptions{})
-	return err
+	return err == nil, err
 }
 
 func (c *Controller) fail(ctx context.Context, obj *unstructured.Unstructured, reason string, cause error) error {

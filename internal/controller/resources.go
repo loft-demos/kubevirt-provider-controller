@@ -23,6 +23,8 @@ type config struct {
 	VCINamespace          string
 	VCITemplateName       string
 	VCIParameters         string
+	VCIOwnerUser          string
+	VCIOwnerTeam          string
 	DeleteVCI             bool
 	ConnectedClusterName  string
 	ManagementNamespace   string

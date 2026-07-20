@@ -11,7 +11,7 @@ func TestParseConfigDefaults(t *testing.T) {
 		"apiVersion": "infra.loft.sh/v1alpha1", "kind": "KubeVirtProviderCluster",
 		"metadata": map[string]interface{}{"name": "provider-a", "namespace": "p-default"},
 		"spec": map[string]interface{}{
-			"virtualCluster": map[string]interface{}{"templateRef": map[string]interface{}{"name": "private-kvm"}},
+			"virtualCluster": map[string]interface{}{"templateRef": map[string]interface{}{"name": "private-kvm"}, "owner": map[string]interface{}{"user": "admin"}},
 			"agent":          map[string]interface{}{"chart": map[string]interface{}{"version": "4.11.0"}},
 			"nodeProvider":   map[string]interface{}{"template": map[string]interface{}{"spec": map[string]interface{}{"kubeVirt": map[string]interface{}{"nodeTypes": []interface{}{}}}}},
 		},
@@ -33,19 +33,45 @@ func TestParseConfigDefaults(t *testing.T) {
 	if cfg.KubeconfigTTLSeconds != 600 {
 		t.Errorf("TTL: got %d, want 600", cfg.KubeconfigTTLSeconds)
 	}
+	if cfg.VCIOwnerUser != "admin" || cfg.VCIOwnerTeam != "" {
+		t.Errorf("owner: got user=%q team=%q", cfg.VCIOwnerUser, cfg.VCIOwnerTeam)
+	}
 }
 
 func TestParseConfigRejectsUnsafeTTL(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]interface{}{
 		"metadata": map[string]interface{}{"name": "provider-a", "namespace": "p-default"},
 		"spec": map[string]interface{}{
-			"virtualCluster": map[string]interface{}{"templateRef": map[string]interface{}{"name": "private-kvm"}},
+			"virtualCluster": map[string]interface{}{"templateRef": map[string]interface{}{"name": "private-kvm"}, "owner": map[string]interface{}{"team": "platform-admins"}},
 			"agent":          map[string]interface{}{"kubeconfigTTLSeconds": int64(7200), "chart": map[string]interface{}{"version": "4.11.0"}},
 			"nodeProvider":   map[string]interface{}{"template": map[string]interface{}{"spec": map[string]interface{}{}}},
 		},
 	}}
 	if _, err := parseConfig(obj); err == nil {
 		t.Fatal("expected unsafe TTL to be rejected")
+	}
+}
+
+func TestParseConfigRequiresExactlyOneOwner(t *testing.T) {
+	base := func(owner map[string]interface{}) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]interface{}{
+			"metadata": map[string]interface{}{"name": "provider-a", "namespace": "p-default"},
+			"spec": map[string]interface{}{
+				"virtualCluster": map[string]interface{}{"templateRef": map[string]interface{}{"name": "private-kvm"}, "owner": owner},
+				"agent":          map[string]interface{}{"chart": map[string]interface{}{"version": "4.11.0"}},
+				"nodeProvider":   map[string]interface{}{"template": map[string]interface{}{"spec": map[string]interface{}{"kubeVirt": map[string]interface{}{}}}},
+			},
+		}}
+	}
+	for name, owner := range map[string]map[string]interface{}{
+		"empty": {},
+		"both":  {"user": "admin", "team": "platform-admins"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseConfig(base(owner)); err == nil {
+				t.Fatal("expected owner validation error")
+			}
+		})
 	}
 }
 

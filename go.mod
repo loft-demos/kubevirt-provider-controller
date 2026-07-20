@@ -1,4 +1,4 @@
-module github.com/loft-sh/kubevirt-provider-controller
+module github.com/loft-demos/kubevirt-provider-controller
 
 go 1.23.0
 

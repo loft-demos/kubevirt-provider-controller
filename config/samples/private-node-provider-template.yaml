@@ -22,11 +22,6 @@ spec:
               volumeClaim:
                 enabled: true
                 size: 5Gi
-          # Required by this PoV's short-lived client-certificate bootstrap.
-          # v2 Argo itself still uses the Platform proxy.
-          service:
-            spec:
-              type: LoadBalancer
         privateNodes:
           enabled: true
         integrations:

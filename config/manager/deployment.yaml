@@ -21,7 +21,7 @@ spec:
       serviceAccountName: kubevirt-provider-controller
       containers:
         - name: controller
-          image: ghcr.io/loft-sh/kubevirt-provider-controller:dev
+          image: ghcr.io/loft-demos/kubevirt-provider-controller:dev
           imagePullPolicy: IfNotPresent
           args: ["--workers=2", "--resync-period=30s"]
           securityContext:
@@ -32,4 +32,3 @@ spec:
           resources:
             requests: {cpu: 25m, memory: 64Mi}
             limits: {memory: 256Mi}
-

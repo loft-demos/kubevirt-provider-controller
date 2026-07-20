@@ -13,16 +13,16 @@ name remain readable in commands, logs, and labels.
 For each `KubeVirtProviderCluster`, the controller:
 
 1. Creates a `VirtualClusterInstance` from a supplied template. The template
-   must enable Private Nodes and the v2 Argo CD connector.
-2. Waits for `VirtualClusterReady`, `VirtualClusterOnline`, and
-   `ArgoCDIntegrationSynced`.
+   must enable Private Nodes and the v2 Argo CD connector. The configured
+   Platform User or Team resource is copied to `spec.owner`.
+2. Waits for `VirtualClusterReady` and `VirtualClusterOnline`.
 3. Creates a cluster-scoped Platform `Cluster` with `networkPeer: true` and
    `unusable: true`.
 4. Gets that Cluster's scoped agent enrollment key.
-5. requests a short-lived, client-certificate vCluster kubeconfig and uses it
+5. Requests a short-lived token kubeconfig and uses the vCluster Platform proxy
    only to create `vcluster-platform/loft-agent-bootstrap` in the vCluster.
-   The kubeconfig is held in memory and discarded; it is never stored in the
-   management cluster.
+   The temporary access key expires after the configured TTL. The kubeconfig is
+   held in memory and discarded; it is never stored in the management cluster.
 6. Creates a v2 `ArgoCDApplication` targeting the VCI's `vCluster` destination.
    Argo installs the Platform chart in `agentOnly` mode, using the chart's
    `tokenSecretRef` support. The enrollment token is not placed in the Argo
@@ -60,9 +60,8 @@ tenant offering.
 - A Platform chart version containing `tokenSecretRef` support.
 - A `VirtualClusterTemplate` that enables both `privateNodes.enabled` and
   `integrations.argoCD`.
-- A direct VCI API endpoint for the short-lived client certificate (the local
-  sample uses a `LoadBalancer` control-plane service). Argo v2 continues to use
-  the Platform proxy; only the one-time Secret write uses this endpoint.
+- A Platform User or Team resource name for `spec.virtualCluster.owner`. Use
+  the resource name (for example `admin`), not an email address.
 - At least one Private Node joined to the provider VCI.
 - For hardware virtualization, `/dev/kvm` exposed on that Private Node.
 - Egress from the VCI to the configured Platform `loftHost`.
@@ -70,6 +69,14 @@ tenant offering.
 The controller runs against the vCluster Platform management Kubernetes API.
 Its service account therefore needs access to Platform management resources and
 the `clusters/accesskey` and `virtualclusterinstances/kubeconfig` subresources.
+The controller Pod must also be able to reach the Platform URL emitted in the
+temporary kubeconfig.
+
+`ArgoCDIntegrationSynced` is intentionally not a hard enrollment gate. That VCI
+condition aggregates all Argo applications, and an unrelated application
+failure must not prevent provider enrollment. The controller instead observes
+its own agent `ArgoCDApplication`; successful synchronization proves the v2
+connector is usable for this workflow.
 
 ## Install
 
@@ -77,7 +84,7 @@ Published releases can be installed from the OCI chart in GHCR:
 
 ```bash
 helm upgrade --install kubevirt-provider-controller \
-  oci://ghcr.io/loft-sh/charts/kubevirt-provider-controller \
+  oci://ghcr.io/loft-demos/charts/kubevirt-provider-controller \
   --version VERSION \
   --namespace kubevirt-provider-controller-system \
   --create-namespace

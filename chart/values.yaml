@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/loft-sh/kubevirt-provider-controller
+  repository: ghcr.io/loft-demos/kubevirt-provider-controller
   # Empty uses Chart.yaml appVersion.
   tag: ""
   # Optional sha256 digest. When set, it takes precedence over tag.
@@ -57,4 +57,3 @@ topologySpreadConstraints: []
 
 priorityClassName: ""
 terminationGracePeriodSeconds: 10
-

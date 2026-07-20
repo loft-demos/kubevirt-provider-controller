@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/loft-sh/kubevirt-provider-controller/internal/controller"
+	"github.com/loft-demos/kubevirt-provider-controller/internal/controller"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
