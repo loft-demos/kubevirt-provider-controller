@@ -199,6 +199,9 @@ func (c *Controller) ensureVCI(ctx context.Context, owner *unstructured.Unstruct
 		"parameters":  cfg.VCIParameters,
 		"owner":       vciOwner(cfg),
 	}
+	if cfg.VCIClusterName != "" {
+		spec["clusterRef"] = map[string]interface{}{"cluster": cfg.VCIClusterName}
+	}
 	vci := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "management.loft.sh/v1", "kind": "VirtualClusterInstance",
 		"metadata": map[string]interface{}{"name": cfg.VCIName, "namespace": cfg.VCINamespace, "labels": labelsObject(owner)},
@@ -244,7 +247,7 @@ func (c *Controller) ensureCluster(ctx context.Context, owner *unstructured.Unst
 		return err
 	}
 	cluster := &unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": "management.loft.sh/v1", "kind": "Cluster", "metadata": map[string]interface{}{"name": cfg.ConnectedClusterName, "labels": labelsObject(owner)},
+		"apiVersion": "management.loft.sh/v1", "kind": "Cluster", "metadata": map[string]interface{}{"name": cfg.ConnectedClusterName, "labels": labelsObject(owner), "annotations": map[string]interface{}{"loft.sh/cluster-ignore-agent": "true"}},
 		"spec": map[string]interface{}{"displayName": cfg.ConnectedClusterName + " (KubeVirt provider)", "description": "Private Node vCluster dedicated as a KubeVirt control-plane cluster", "networkPeer": true, "unusable": true, "managementNamespace": cfg.ManagementNamespace},
 	}}
 	_, err = c.dynamic.Resource(clusterGVR).Create(ctx, cluster, metav1.CreateOptions{})
@@ -295,7 +298,7 @@ func (c *Controller) ensureArgoApplication(ctx context.Context, owner *unstructu
 		"apiVersion": "management.loft.sh/v1", "kind": "ArgoCDApplication", "metadata": map[string]interface{}{"name": cfg.ArgoApplicationName, "namespace": cfg.VCINamespace, "labels": labelsObject(owner)},
 		"spec": map[string]interface{}{
 			"displayName": cfg.ConnectedClusterName + " agent", "destination": map[string]interface{}{"virtualCluster": map[string]interface{}{"name": cfg.VCIName, "namespace": cfg.AgentNamespace, "target": "vCluster"}},
-			"template": map[string]interface{}{"spec": map[string]interface{}{"project": "default", "source": map[string]interface{}{"repoURL": cfg.AgentChartRepo, "chart": cfg.AgentChartName, "targetRevision": cfg.AgentChartVersion, "helm": map[string]interface{}{"releaseName": cfg.AgentReleaseName, "values": values}}, "syncPolicy": map[string]interface{}{"automated": map[string]interface{}{"prune": true, "selfHeal": true}, "syncOptions": []interface{}{"CreateNamespace=true"}}}},
+			"template": map[string]interface{}{"spec": map[string]interface{}{"project": "default", "destination": map[string]interface{}{"namespace": cfg.AgentNamespace}, "source": map[string]interface{}{"repoURL": cfg.AgentChartRepo, "chart": cfg.AgentChartName, "targetRevision": cfg.AgentChartVersion, "helm": map[string]interface{}{"releaseName": cfg.AgentReleaseName, "values": values}}, "syncPolicy": map[string]interface{}{"automated": map[string]interface{}{"prune": true, "selfHeal": true}, "syncOptions": []interface{}{"CreateNamespace=true"}}}},
 		},
 	}}
 	_, err = c.dynamic.Resource(argoAppGVR).Namespace(cfg.VCINamespace).Create(ctx, app, metav1.CreateOptions{})

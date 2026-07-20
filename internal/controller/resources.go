@@ -21,6 +21,7 @@ const (
 type config struct {
 	VCIName               string
 	VCINamespace          string
+	VCIClusterName        string
 	VCITemplateName       string
 	VCIParameters         string
 	VCIOwnerUser          string

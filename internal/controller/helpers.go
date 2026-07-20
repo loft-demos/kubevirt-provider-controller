@@ -33,6 +33,7 @@ func parseConfig(obj *unstructured.Unstructured) (config, error) {
 
 	c := config{
 		VCIName: get("virtualCluster", "name"), VCINamespace: get("virtualCluster", "namespace"),
+		VCIClusterName:  get("virtualCluster", "clusterRef", "cluster"),
 		VCITemplateName: get("virtualCluster", "templateRef", "name"), VCIParameters: get("virtualCluster", "parameters"),
 		VCIOwnerUser: get("virtualCluster", "owner", "user"), VCIOwnerTeam: get("virtualCluster", "owner", "team"),
 		DeleteVCI:            getBool(true, "virtualCluster", "deleteWithProviderCluster"),
