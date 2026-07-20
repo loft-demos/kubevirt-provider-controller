@@ -1,0 +1,60 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/loft-sh/kubevirt-provider-controller
+  # Empty uses Chart.yaml appVersion.
+  tag: ""
+  # Optional sha256 digest. When set, it takes precedence over tag.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  # The controller uses its service-account credentials against the Platform
+  # management API. Do not disable this without mounting a kubeconfig.
+  automountServiceAccountToken: true
+
+rbac:
+  create: true
+
+controller:
+  workers: 2
+  resyncPeriod: 30s
+  logLevel: 2
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+priorityClassName: ""
+terminationGracePeriodSeconds: 10
+

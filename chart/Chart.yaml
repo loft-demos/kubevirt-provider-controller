@@ -1,0 +1,17 @@
+apiVersion: v2
+name: kubevirt-provider-controller
+description: >-
+  Creates a Private Node vCluster, enrolls it as a dedicated vCluster Platform
+  control-plane cluster through Argo CD, and configures a KubeVirt NodeProvider.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/loft-sh/kubevirt-provider-controller
+sources:
+  - https://github.com/loft-sh/kubevirt-provider-controller
+keywords:
+  - vcluster-platform
+  - kubevirt
+  - private-nodes
+  - controller
+

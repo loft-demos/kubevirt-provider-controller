@@ -1,0 +1,132 @@
+# KubeVirt Provider Controller
+
+`kubevirt-provider-controller` turns a dedicated Private Node vCluster into a
+connected vCluster Platform control-plane cluster and creates a KubeVirt
+`NodeProvider` that targets it.
+
+The project name deliberately omits `cluster`: the controller's primary API is
+already named `KubeVirtProviderCluster`, while the shorter repository and image
+name remain readable in commands, logs, and labels.
+
+## Lifecycle
+
+For each `KubeVirtProviderCluster`, the controller:
+
+1. Creates a `VirtualClusterInstance` from a supplied template. The template
+   must enable Private Nodes and the v2 Argo CD connector.
+2. Waits for `VirtualClusterReady`, `VirtualClusterOnline`, and
+   `ArgoCDIntegrationSynced`.
+3. Creates a cluster-scoped Platform `Cluster` with `networkPeer: true` and
+   `unusable: true`.
+4. Gets that Cluster's scoped agent enrollment key.
+5. requests a short-lived, client-certificate vCluster kubeconfig and uses it
+   only to create `vcluster-platform/loft-agent-bootstrap` in the vCluster.
+   The kubeconfig is held in memory and discarded; it is never stored in the
+   management cluster.
+6. Creates a v2 `ArgoCDApplication` targeting the VCI's `vCluster` destination.
+   Argo installs the Platform chart in `agentOnly` mode, using the chart's
+   `tokenSecretRef` support. The enrollment token is not placed in the Argo
+   application or Helm values.
+7. Waits for the connected Cluster to reach `Initialized`.
+8. Creates the KubeVirt `NodeProvider`, forcing its `clusterRef` to the newly
+   connected cluster.
+9. Waits for the NodeProvider to reach `Available`.
+
+Deletion is ordered in reverse: NodeProvider, Argo application, connected
+Cluster, and finally the VCI. Existing objects without this controller's exact
+ownership labels are never adopted or deleted.
+
+## Dual Platform identity
+
+The VCI intentionally has two Platform identities:
+
+- `VirtualClusterInstance`: tenant-cluster lifecycle, v2 Argo registration,
+  user access, and the Platform proxy.
+- `Cluster`: connected control-plane lifecycle and the object referenced by
+  `NodeProvider.spec.kubeVirt.clusterRef`.
+
+These identities use different API resources and credentials. The Argo
+registration key is target-scoped and is not reused as the connected-cluster
+agent key. There is no API identity collision.
+
+The connected Cluster remains `unusable: true`. This is intentional: Platform
+must not schedule Spaces or other tenant clusters onto an infrastructure VCI
+whose only purpose is to host KubeVirt. Do not expose this template as a normal
+tenant offering.
+
+## Requirements
+
+- vCluster Platform with the v2 Argo CD integration configured.
+- A Platform chart version containing `tokenSecretRef` support.
+- A `VirtualClusterTemplate` that enables both `privateNodes.enabled` and
+  `integrations.argoCD`.
+- A direct VCI API endpoint for the short-lived client certificate (the local
+  sample uses a `LoadBalancer` control-plane service). Argo v2 continues to use
+  the Platform proxy; only the one-time Secret write uses this endpoint.
+- At least one Private Node joined to the provider VCI.
+- For hardware virtualization, `/dev/kvm` exposed on that Private Node.
+- Egress from the VCI to the configured Platform `loftHost`.
+
+The controller runs against the vCluster Platform management Kubernetes API.
+Its service account therefore needs access to Platform management resources and
+the `clusters/accesskey` and `virtualclusterinstances/kubeconfig` subresources.
+
+## Install
+
+Published releases can be installed from the OCI chart in GHCR:
+
+```bash
+helm upgrade --install kubevirt-provider-controller \
+  oci://ghcr.io/loft-sh/charts/kubevirt-provider-controller \
+  --version VERSION \
+  --namespace kubevirt-provider-controller-system \
+  --create-namespace
+```
+
+For a local checkout, install the same chart directly:
+
+```bash
+helm upgrade --install kubevirt-provider-controller ./chart \
+  --namespace kubevirt-provider-controller-system \
+  --create-namespace
+```
+
+The original Kustomize deployment remains available for development. Build and
+publish the image, change its reference in `config/manager/deployment.yaml`, and
+run:
+
+```bash
+kubectl apply -k config
+```
+
+Create or adapt the example template and composite resource:
+
+```bash
+kubectl apply -f config/samples/private-node-provider-template.yaml
+kubectl apply -f config/samples/local-kvm.yaml
+kubectl -n p-default get kubevirtprovidercluster local-kvm-provider -w
+```
+
+See [local KVM validation](docs/local-kvm-validation.md) before treating an
+`Available` NodeProvider as proof that nested virtualization works.
+
+## Development
+
+```bash
+make test
+make build
+make chart-lint
+```
+
+Release publication is split into two workflows:
+
+- `publish-image.yaml` publishes `linux/amd64` and `linux/arm64` images to
+  `ghcr.io/<repository-owner>/kubevirt-provider-controller`. Main publishes
+  `edge` and SHA tags; GitHub releases publish semantic-version and stable
+  `latest` tags.
+- `publish-chart.yaml` packages the release version and pushes the chart to
+  `oci://ghcr.io/<repository-owner>/charts/kubevirt-provider-controller`.
+
+The API is deliberately `v1alpha1`. This is a PoV controller built against the
+Platform v1 management APIs visible in this workspace, not a released vCluster
+Platform feature or compatibility commitment.

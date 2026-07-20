@@ -1,0 +1,103 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kubevirtproviderclusters.infra.loft.sh
+spec:
+  group: infra.loft.sh
+  scope: Namespaced
+  names:
+    plural: kubevirtproviderclusters
+    singular: kubevirtprovidercluster
+    kind: KubeVirtProviderCluster
+    shortNames: [kvpc]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: VCluster
+          type: string
+          jsonPath: .status.resources.virtualCluster
+        - name: Cluster
+          type: string
+          jsonPath: .status.resources.connectedCluster
+        - name: NodeProvider
+          type: string
+          jsonPath: .status.resources.nodeProvider
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            apiVersion: {type: string}
+            kind: {type: string}
+            metadata: {type: object}
+            spec:
+              type: object
+              required: [virtualCluster, agent, nodeProvider]
+              properties:
+                virtualCluster:
+                  type: object
+                  required: [templateRef]
+                  properties:
+                    name: {type: string, minLength: 1}
+                    namespace: {type: string, minLength: 1}
+                    templateRef:
+                      type: object
+                      required: [name]
+                      properties:
+                        name: {type: string, minLength: 1}
+                    parameters:
+                      type: string
+                      description: YAML parameter values passed unchanged to the VirtualClusterInstance.
+                    deleteWithProviderCluster:
+                      type: boolean
+                      default: true
+                connectedCluster:
+                  type: object
+                  properties:
+                    name: {type: string, minLength: 1}
+                    managementNamespace: {type: string, default: vcluster-platform}
+                agent:
+                  type: object
+                  required: [chart]
+                  properties:
+                    namespace: {type: string, default: vcluster-platform}
+                    secretName: {type: string, default: loft-agent-bootstrap}
+                    releaseName: {type: string, default: loft}
+                    argoApplicationName: {type: string}
+                    kubeconfigTTLSeconds:
+                      type: integer
+                      format: int64
+                      minimum: 60
+                      maximum: 3600
+                      default: 600
+                    chart:
+                      type: object
+                      required: [version]
+                      properties:
+                        repoURL: {type: string, default: "https://charts.loft.sh"}
+                        name: {type: string, default: vcluster-platform}
+                        version: {type: string, minLength: 1}
+                nodeProvider:
+                  type: object
+                  required: [template]
+                  properties:
+                    name: {type: string}
+                    targetNamespace: {type: string, default: vcluster-platform}
+                    template:
+                      type: object
+                      description: NodeProvider manifest; clusterRef is owned and overwritten by this controller.
+                      x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+

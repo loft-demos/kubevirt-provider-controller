@@ -1,0 +1,9 @@
+The kubevirt-provider-controller is installed in {{ .Release.Namespace }}.
+
+Inspect the controller:
+  kubectl -n {{ .Release.Namespace }} get deployment {{ include "kubevirt-provider-controller.fullname" . }}
+
+Create a provider cluster:
+  kubectl apply -f config/samples/local-kvm.yaml
+  kubectl -n p-default get kubevirtproviderclusters -w
+

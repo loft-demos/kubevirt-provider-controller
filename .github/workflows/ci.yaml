@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
+      - name: Unit tests and vet
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Cross-compile controller
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o /tmp/controller-amd64 ./cmd/controller
+          GOOS=linux GOARCH=arm64 go build -o /tmp/controller-arm64 ./cmd/controller
+
+      - name: Validate Helm chart
+        run: make chart-lint
+

@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubevirt-provider-controller
+rules:
+  - apiGroups: ["infra.loft.sh"]
+    resources: ["kubevirtproviderclusters"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["infra.loft.sh"]
+    resources: ["kubevirtproviderclusters/status", "kubevirtproviderclusters/finalizers"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["management.loft.sh"]
+    resources: ["virtualclusterinstances"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "use"]
+  - apiGroups: ["management.loft.sh"]
+    resources: ["argocdapplications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["management.loft.sh"]
+    resources: ["clusters", "nodeproviders"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["management.loft.sh"]
+    resources: ["clusters/accesskey"]
+    verbs: ["get"]
+  - apiGroups: ["management.loft.sh"]
+    resources: ["virtualclusterinstances/kubeconfig"]
+    verbs: ["create"]
