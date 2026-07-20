@@ -24,3 +24,8 @@ rules:
   - apiGroups: ["management.loft.sh"]
     resources: ["virtualclusterinstances/kubeconfig"]
     verbs: ["create"]
+  # Token kubeconfigs must be created in the configured Platform owner's
+  # identity so Platform can own and scope the temporary access key.
+  - apiGroups: [""]
+    resources: ["users", "groups"]
+    verbs: ["impersonate"]

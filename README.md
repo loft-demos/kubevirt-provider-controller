@@ -23,6 +23,8 @@ For each `KubeVirtProviderCluster`, the controller:
    only to create `vcluster-platform/loft-agent-bootstrap` in the vCluster.
    The temporary access key expires after the configured TTL. The kubeconfig is
    held in memory and discarded; it is never stored in the management cluster.
+   The kubeconfig request impersonates the configured owner so Platform can own
+   and scope the temporary access key correctly.
 6. Creates a v2 `ArgoCDApplication` targeting the VCI's `vCluster` destination.
    Argo installs the Platform chart in `agentOnly` mode, using the chart's
    `tokenSecretRef` support. The enrollment token is not placed in the Argo
@@ -69,6 +71,10 @@ tenant offering.
 The controller runs against the vCluster Platform management Kubernetes API.
 Its service account therefore needs access to Platform management resources and
 the `clusters/accesskey` and `virtualclusterinstances/kubeconfig` subresources.
+It also needs Kubernetes `impersonate` permission for users and groups to make
+the kubeconfig request as the configured VCI owner. Access to create or update
+`KubeVirtProviderCluster` resources must therefore be restricted to trusted
+Platform infrastructure administrators.
 The controller Pod must also be able to reach the Platform URL emitted in the
 temporary kubeconfig.
 

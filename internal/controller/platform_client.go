@@ -49,6 +49,10 @@ func (p *platformClient) endpoint(parts ...string) (string, error) {
 }
 
 func (p *platformClient) do(ctx context.Context, method string, endpointParts []string, body interface{}, out interface{}) error {
+	return p.doWithHeaders(ctx, method, endpointParts, body, out, nil)
+}
+
+func (p *platformClient) doWithHeaders(ctx context.Context, method string, endpointParts []string, body interface{}, out interface{}, headers http.Header) error {
 	endpoint, err := p.endpoint(endpointParts...)
 	if err != nil {
 		return err
@@ -67,6 +71,11 @@ func (p *platformClient) do(ctx context.Context, method string, endpointParts []
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, values := range headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
 	}
 	resp, err := p.http.Do(req)
 	if err != nil {
@@ -95,7 +104,7 @@ func (p *platformClient) clusterAccessKey(ctx context.Context, name string) (age
 	return result, err
 }
 
-func (p *platformClient) virtualClusterKubeconfig(ctx context.Context, namespace, name string, ttl int64) ([]byte, error) {
+func (p *platformClient) virtualClusterKubeconfig(ctx context.Context, namespace, name string, ttl int64, ownerUser, ownerTeam string) ([]byte, error) {
 	req := map[string]interface{}{
 		"apiVersion": "management.loft.sh/v1", "kind": "VirtualClusterInstanceKubeConfig",
 		"metadata": map[string]interface{}{"namespace": namespace},
@@ -109,7 +118,11 @@ func (p *platformClient) virtualClusterKubeconfig(ctx context.Context, namespace
 			KubeConfig string `json:"kubeConfig"`
 		} `json:"status"`
 	}
-	err := p.do(ctx, http.MethodPost, []string{"apis", "management.loft.sh", "v1", "namespaces", namespace, "virtualclusterinstances", name, "kubeconfig"}, req, &result)
+	impersonateUser, impersonateGroup := platformOwnerImpersonation(ownerUser, ownerTeam)
+	headers := make(http.Header)
+	headers.Set("Impersonate-User", impersonateUser)
+	headers.Add("Impersonate-Group", impersonateGroup)
+	err := p.doWithHeaders(ctx, http.MethodPost, []string{"apis", "management.loft.sh", "v1", "namespaces", namespace, "virtualclusterinstances", name, "kubeconfig"}, req, &result, headers)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +130,13 @@ func (p *platformClient) virtualClusterKubeconfig(ctx context.Context, namespace
 		return nil, fmt.Errorf("virtual cluster kubeconfig response was empty")
 	}
 	return []byte(result.Status.KubeConfig), nil
+}
+
+func platformOwnerImpersonation(user, team string) (string, string) {
+	if user != "" {
+		return user, "loft:user:" + user
+	}
+	return "loft:team:" + team, "loft:team:" + team
 }
 
 func stageAgentSecret(ctx context.Context, kubeconfig []byte, namespace, name string, access agentAccess, ownerLabels map[string]string) error {

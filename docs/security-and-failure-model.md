@@ -6,6 +6,10 @@
   `Cluster` identity.
 - A short-lived VCI access-key token is requested with a configurable TTL of
   60–3600 seconds (600 by default).
+- The kubeconfig request impersonates the configured Platform User or Team so
+  Platform assigns ownership and VCI scope to the temporary access key. The
+  controller has `impersonate` permission for users and groups; write access to
+  `KubeVirtProviderCluster` is therefore an infrastructure-admin capability.
 - The temporary kubeconfig exists only in process memory.
 - The kubeconfig uses the vCluster Platform proxy; no direct VCI API endpoint is
   required. The only operation performed through it is namespace/Secret

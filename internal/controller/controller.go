@@ -259,7 +259,7 @@ func (c *Controller) stageEnrollment(ctx context.Context, owner *unstructured.Un
 	if err != nil {
 		return fmt.Errorf("get connected-cluster access key: %w", err)
 	}
-	kubeconfig, err := c.platform.virtualClusterKubeconfig(ctx, cfg.VCINamespace, cfg.VCIName, cfg.KubeconfigTTLSeconds)
+	kubeconfig, err := c.platform.virtualClusterKubeconfig(ctx, cfg.VCINamespace, cfg.VCIName, cfg.KubeconfigTTLSeconds, cfg.VCIOwnerUser, cfg.VCIOwnerTeam)
 	if err != nil {
 		return fmt.Errorf("get temporary vCluster kubeconfig: %w", err)
 	}

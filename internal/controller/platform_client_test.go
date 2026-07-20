@@ -21,6 +21,12 @@ func TestPlatformSubresources(t *testing.T) {
 		case "/kubernetes/management/apis/management.loft.sh/v1/clusters/provider-a/accesskey":
 			response = `{"accessKey":"secret","loftHost":"https://platform.example.com"}`
 		case "/kubernetes/management/apis/management.loft.sh/v1/namespaces/p-default/virtualclusterinstances/provider-a/kubeconfig":
+			if got := r.Header.Get("Impersonate-User"); got != "admin" {
+				t.Errorf("Impersonate-User = %q, want admin", got)
+			}
+			if got := r.Header.Values("Impersonate-Group"); len(got) != 1 || got[0] != "loft:user:admin" {
+				t.Errorf("Impersonate-Group = %#v, want loft:user:admin", got)
+			}
 			var body map[string]interface{}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			spec := body["spec"].(map[string]interface{})
@@ -44,7 +50,7 @@ func TestPlatformSubresources(t *testing.T) {
 	if err != nil || access.AccessKey != "secret" {
 		t.Fatalf("access key: %#v, %v", access, err)
 	}
-	kcfg, err := p.virtualClusterKubeconfig(context.Background(), "p-default", "provider-a", 600)
+	kcfg, err := p.virtualClusterKubeconfig(context.Background(), "p-default", "provider-a", 600, "admin", "")
 	if err != nil || string(kcfg) != "apiVersion: v1" {
 		t.Fatalf("kubeconfig: %q, %v", kcfg, err)
 	}
@@ -59,6 +65,23 @@ func TestPlatformSubresources(t *testing.T) {
 			t.Errorf("request %d: got %q, want %q", i, got, want[i])
 		}
 		i++
+	}
+}
+
+func TestPlatformOwnerImpersonation(t *testing.T) {
+	tests := []struct {
+		name, user, team, wantUser, wantGroup string
+	}{
+		{name: "user", user: "admin", wantUser: "admin", wantGroup: "loft:user:admin"},
+		{name: "team", team: "platform-admins", wantUser: "loft:team:platform-admins", wantGroup: "loft:team:platform-admins"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotUser, gotGroup := platformOwnerImpersonation(tt.user, tt.team)
+			if gotUser != tt.wantUser || gotGroup != tt.wantGroup {
+				t.Fatalf("got user=%q group=%q, want user=%q group=%q", gotUser, gotGroup, tt.wantUser, tt.wantGroup)
+			}
+		})
 	}
 }
 
