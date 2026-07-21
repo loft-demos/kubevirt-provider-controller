@@ -62,7 +62,18 @@ spec:
                         name: {type: string, minLength: 1}
                     parameters:
                       type: string
-                      description: YAML parameter values passed unchanged to the VirtualClusterInstance.
+                      description: >-
+                        Raw YAML parameter values passed unchanged to the VirtualClusterInstance.
+                        Mutually exclusive with parameterValues; prefer parameterValues.
+                    parameterValues:
+                      type: object
+                      description: >-
+                        Structured VirtualClusterTemplate parameter values, keyed by each
+                        template parameter's variable name. Marshaled to YAML and passed as
+                        the VirtualClusterInstance spec.parameters, so it supports any
+                        parameters the referenced template defines (for example the autoNodes
+                        node pool quantity). Mutually exclusive with parameters.
+                      x-kubernetes-preserve-unknown-fields: true
                     owner:
                       type: object
                       description: Platform User or Team resource that owns the generated VirtualClusterInstance.

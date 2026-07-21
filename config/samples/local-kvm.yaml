@@ -6,11 +6,23 @@ metadata:
 spec:
   virtualCluster:
     name: local-kvm-provider
+    # Optional: pin the Private Node vCluster control plane to a specific connected
+    # cluster. When omitted, the Platform scheduler chooses. Set it to the Platform
+    # (host) cluster so the agent peers directly with loft instead of relaying
+    # through the Platform proxy.
+    clusterRef:
+      cluster: loft-cluster
     owner:
       # Use a Platform User resource name (for example "admin"), not an email.
       user: REPLACE_WITH_PLATFORM_USER_NAME
     templateRef:
       name: private-node-kubevirt-provider
+    # Structured VirtualClusterTemplate parameter values, keyed by each template
+    # parameter's variable name. Marshaled to YAML and passed to the generated
+    # VirtualClusterInstance as spec.parameters. Any parameters the referenced
+    # template defines can be set here. Mutually exclusive with parameters.
+    parameterValues:
+      nodePoolQuantity: 1
   connectedCluster:
     name: local-kvm-provider
     managementNamespace: vcluster-platform
@@ -37,12 +49,34 @@ spec:
               enabled: true
               helmValues: |-
                 kubevirt:
+                  operator:
+                    # Private Node vClusters have no control-plane node, so KubeVirt's
+                    # default virt-operator nodeAffinity (requires control-plane/master)
+                    # can never match. Null it so virt-operator schedules on the private
+                    # worker nodes; nodeSelector (os: linux) and soft anti-affinity remain.
+                    affinity:
+                      nodeAffinity: null
                   spec:
                     configuration:
                       developerConfiguration:
                         # Explicitly require /dev/kvm; never hide missing KVM by
                         # falling back to QEMU software emulation.
                         useEmulation: false
+                        featureGates:
+                          - GPU
+                          - DisableMDEVConfiguration
+                      permittedHostDevices:
+                        # GPU passthrough (config demo). externalResourceProvider means an
+                        # external NVIDIA GPU Operator device plugin advertises these. No
+                        # local GPU here, so no node advertises them and GPU-requesting VMs
+                        # stay Pending; the PCI IDs are real (pci.ids) for a credible demo.
+                        pciHostDevices:
+                          - externalResourceProvider: true
+                            pciVendorSelector: "10DE:2901"        # GB100 [B200]
+                            resourceName: nvidia.com/GB100_B200
+                          - externalResourceProvider: true
+                            pciVendorSelector: "10DE:3182"        # GB110 [B300 SXM6 AC]
+                            resourceName: nvidia.com/GB110_B300
           virtualMachineTemplate:
             spec:
               runStrategy: Always

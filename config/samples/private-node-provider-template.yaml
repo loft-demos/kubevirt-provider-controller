@@ -24,6 +24,19 @@ spec:
                 size: 5Gi
         privateNodes:
           enabled: true
+          autoNodes:
+            - provider: us-va-blacksburg-dc1
+              static:
+                - name: node-pool-1
+                  # Driven by the nodePoolQuantity template parameter so a
+                  # KubeVirtProviderCluster can size the pool via
+                  # spec.virtualCluster.parameterValues.
+                  quantity: {{ .Values.nodePoolQuantity }}
+                  nodeTypeSelector:
+                    - property: vcluster.com/profile
+                      operator: In
+                      values:
+                        - xlarge
         integrations:
           argoCD:
             enabled: true
@@ -40,6 +53,17 @@ spec:
       metadata:
         labels:
           infra.loft.sh/purpose: kubevirt-provider
+  parameters:
+    - variable: nodePoolQuantity
+      label: Node Pool Quantity
+      description: >
+        Number of static Private Nodes the KubeVirt provider control plane
+        provisions from us-va-blacksburg-dc1. Supplied per provider cluster via
+        spec.virtualCluster.parameterValues.nodePoolQuantity.
+      type: number
+      defaultValue: "1"
+      min: 1
+      max: 10
   access:
     - verbs: [get]
       users: ["*"]

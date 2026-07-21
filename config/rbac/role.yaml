@@ -29,3 +29,8 @@ rules:
   - apiGroups: [""]
     resources: ["users", "groups"]
     verbs: ["impersonate"]
+  # Setting spec.owner on the generated VirtualClusterInstance requires loft's
+  # custom "makeowner" verb on the target user/team (management.loft.sh authorizer).
+  - apiGroups: ["management.loft.sh"]
+    resources: ["users", "teams"]
+    verbs: ["makeowner"]

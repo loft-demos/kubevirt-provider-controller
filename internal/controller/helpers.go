@@ -7,6 +7,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
 )
 
 func parseConfig(obj *unstructured.Unstructured) (config, error) {
@@ -82,6 +83,23 @@ func parseConfig(obj *unstructured.Unstructured) (config, error) {
 	}
 	tpl, _, _ := unstructured.NestedMap(obj.Object, "spec", "nodeProvider", "template")
 	c.NodeProviderTemplate = tpl
+
+	// Structured template parameter values are marshaled to the YAML string that
+	// the VirtualClusterInstance expects. This lets a KubeVirtProviderCluster pass
+	// any parameters the referenced VirtualClusterTemplate defines (for example the
+	// autoNodes node pool quantity) without hand-writing a raw YAML blob.
+	if values, found, err := unstructured.NestedMap(obj.Object, "spec", "virtualCluster", "parameterValues"); err != nil {
+		return c, fmt.Errorf("spec.virtualCluster.parameterValues is not an object: %w", err)
+	} else if found && len(values) > 0 {
+		if c.VCIParameters != "" {
+			return c, fmt.Errorf("spec.virtualCluster.parameters and spec.virtualCluster.parameterValues are mutually exclusive; set only one")
+		}
+		encoded, err := yaml.Marshal(values)
+		if err != nil {
+			return c, fmt.Errorf("marshal spec.virtualCluster.parameterValues: %w", err)
+		}
+		c.VCIParameters = string(encoded)
+	}
 
 	if c.VCITemplateName == "" {
 		return c, fmt.Errorf("spec.virtualCluster.templateRef.name is required")

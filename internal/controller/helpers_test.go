@@ -75,6 +75,47 @@ func TestParseConfigRequiresExactlyOneOwner(t *testing.T) {
 	}
 }
 
+func TestParseConfigMarshalsParameterValues(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{"name": "provider-a", "namespace": "p-default"},
+		"spec": map[string]interface{}{
+			"virtualCluster": map[string]interface{}{
+				"templateRef":     map[string]interface{}{"name": "private-kvm"},
+				"owner":           map[string]interface{}{"user": "admin"},
+				"parameterValues": map[string]interface{}{"nodePoolQuantity": int64(3)},
+			},
+			"agent":        map[string]interface{}{"chart": map[string]interface{}{"version": "4.11.0"}},
+			"nodeProvider": map[string]interface{}{"template": map[string]interface{}{"spec": map[string]interface{}{"kubeVirt": map[string]interface{}{}}}},
+		},
+	}}
+	cfg, err := parseConfig(obj)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+	if want := "nodePoolQuantity: 3\n"; cfg.VCIParameters != want {
+		t.Errorf("VCIParameters: got %q, want %q", cfg.VCIParameters, want)
+	}
+}
+
+func TestParseConfigRejectsBothParameterForms(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{"name": "provider-a", "namespace": "p-default"},
+		"spec": map[string]interface{}{
+			"virtualCluster": map[string]interface{}{
+				"templateRef":     map[string]interface{}{"name": "private-kvm"},
+				"owner":           map[string]interface{}{"user": "admin"},
+				"parameters":      "nodePoolQuantity: 1\n",
+				"parameterValues": map[string]interface{}{"nodePoolQuantity": int64(3)},
+			},
+			"agent":        map[string]interface{}{"chart": map[string]interface{}{"version": "4.11.0"}},
+			"nodeProvider": map[string]interface{}{"template": map[string]interface{}{"spec": map[string]interface{}{"kubeVirt": map[string]interface{}{}}}},
+		},
+	}}
+	if _, err := parseConfig(obj); err == nil {
+		t.Fatal("expected mutually-exclusive parameters/parameterValues to be rejected")
+	}
+}
+
 func TestConditionsAndOwnership(t *testing.T) {
 	owner := &unstructured.Unstructured{Object: map[string]interface{}{"metadata": map[string]interface{}{"name": "a", "namespace": "p-default", "generation": int64(2)}}}
 	child := &unstructured.Unstructured{Object: map[string]interface{}{"metadata": map[string]interface{}{"name": "child", "labels": labelsObject(owner)}}}

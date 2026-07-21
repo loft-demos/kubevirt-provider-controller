@@ -84,6 +84,29 @@ failure must not prevent provider enrollment. The controller instead observes
 its own agent `ArgoCDApplication`; successful synchronization proves the v2
 connector is usable for this workflow.
 
+## Template parameters
+
+A `VirtualClusterTemplate` may expose `parameters` whose values the referenced
+template renders into its helm values (for example the autoNodes node pool
+`quantity`). Pass those values per provider cluster with
+`spec.virtualCluster.parameterValues`, a structured object keyed by each
+template parameter's `variable`:
+
+```yaml
+spec:
+  virtualCluster:
+    templateRef:
+      name: private-node-kubevirt-provider
+    parameterValues:
+      nodePoolQuantity: 3
+```
+
+The controller marshals `parameterValues` to YAML and sets it as the generated
+`VirtualClusterInstance` `spec.parameters`, so any parameters the template
+defines are supported without editing the controller. For raw pass-through the
+legacy `spec.virtualCluster.parameters` string is still accepted, but the two
+fields are mutually exclusive; prefer `parameterValues`.
+
 ## Install
 
 Published releases can be installed from the OCI chart in GHCR:
