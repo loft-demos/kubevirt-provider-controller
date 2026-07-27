@@ -2,7 +2,7 @@ apiVersion: infra.loft.sh/v1alpha1
 kind: KubeVirtProviderCluster
 metadata:
   name: local-kvm-provider
-  namespace: p-default
+  namespace: p-platform
 spec:
   virtualCluster:
     name: local-kvm-provider
@@ -57,6 +57,21 @@ spec:
                     affinity:
                       nodeAffinity: null
                   spec:
+                    infra:
+                      nodePlacement:
+                        affinity:
+                          # KubeVirt's install strategy dumper and infra
+                          # components default to role-label affinity. Private
+                          # Node vClusters may have no node-role labels, so pin
+                          # infra components to Linux nodes explicitly.
+                          nodeAffinity:
+                            requiredDuringSchedulingIgnoredDuringExecution:
+                              nodeSelectorTerms:
+                                - matchExpressions:
+                                    - key: kubernetes.io/os
+                                      operator: In
+                                      values:
+                                        - linux
                     configuration:
                       developerConfiguration:
                         # Explicitly require /dev/kvm; never hide missing KVM by

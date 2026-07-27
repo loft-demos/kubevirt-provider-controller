@@ -24,9 +24,9 @@ container also needs `--device=/dev/kvm` (or the equivalent runtime setting).
 After applying the sample, verify each boundary independently:
 
 ```bash
-kubectl -n p-default get virtualclusterinstance local-kvm-provider -o yaml
+kubectl -n p-platform get virtualclusterinstance local-kvm-provider -o yaml
 kubectl get cluster local-kvm-provider -o yaml
-kubectl -n p-default get argocdapplication local-kvm-provider-agent -o yaml
+kubectl -n p-platform get argocdapplication local-kvm-provider-agent -o yaml
 kubectl get nodeprovider local-kvm -o yaml
 ```
 
@@ -56,4 +56,3 @@ then verify:
 
 This validates nested KVM passthrough and the complete control path. It does not
 validate IOMMU isolation, VFIO reset, GPU identity, or secure GPU reclaim.
-

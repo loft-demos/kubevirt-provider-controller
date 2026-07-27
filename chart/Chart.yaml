@@ -4,8 +4,8 @@ description: >-
   Creates a Private Node vCluster, enrolls it as a dedicated vCluster Platform
   control-plane cluster through Argo CD, and configures a KubeVirt NodeProvider.
 type: application
-version: 0.1.4
-appVersion: "0.1.4"
+version: 0.2.0
+appVersion: "0.2.0"
 home: https://github.com/loft-demos/kubevirt-provider-controller
 sources:
   - https://github.com/loft-demos/kubevirt-provider-controller

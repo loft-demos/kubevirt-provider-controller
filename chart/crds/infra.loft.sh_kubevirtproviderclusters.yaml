@@ -49,7 +49,10 @@ spec:
                   required: [templateRef, owner]
                   properties:
                     name: {type: string, minLength: 1}
-                    namespace: {type: string, minLength: 1}
+                    namespace:
+                      type: string
+                      minLength: 1
+                      description: Deprecated override; when set, it must match metadata.namespace. The generated VirtualClusterInstance lives in the KubeVirtProviderCluster project namespace.
                     clusterRef:
                       type: object
                       description: Connected cluster to host the Private Node vCluster control plane. When empty, the Platform scheduler chooses.

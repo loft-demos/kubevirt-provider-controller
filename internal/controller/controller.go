@@ -141,7 +141,7 @@ func (c *Controller) reconcile(ctx context.Context, namespace, name string) erro
 	if err := c.ensureCluster(ctx, obj, cfg); err != nil {
 		return err
 	}
-	if !conditionTrue(obj, "EnrollmentSecretStaged") {
+	if !conditionObservedGenerationTrue(obj, "EnrollmentSecretStaged") {
 		if err := c.stageEnrollment(ctx, obj, cfg); err != nil {
 			return c.progress(ctx, obj, "EnrollmentSecretStaged", "False", "EnrollmentFailed", err.Error())
 		}
@@ -310,7 +310,7 @@ func (c *Controller) ensureArgoApplication(ctx context.Context, owner *unstructu
 	app := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "management.loft.sh/v1", "kind": "ArgoCDApplication", "metadata": map[string]interface{}{"name": cfg.ArgoApplicationName, "namespace": cfg.VCINamespace, "labels": labelsObject(owner)},
 		"spec": map[string]interface{}{
-			"displayName": cfg.ConnectedClusterName + " agent", "destination": map[string]interface{}{"virtualCluster": map[string]interface{}{"name": cfg.VCIName, "namespace": cfg.AgentNamespace, "target": "vCluster"}},
+			"displayName": cfg.ConnectedClusterName + " agent", "destination": map[string]interface{}{"virtualCluster": map[string]interface{}{"name": cfg.VCIName, "target": "vCluster"}},
 			"template": map[string]interface{}{"spec": map[string]interface{}{"project": "default", "destination": map[string]interface{}{"namespace": cfg.AgentNamespace}, "source": map[string]interface{}{"repoURL": cfg.AgentChartRepo, "chart": cfg.AgentChartName, "targetRevision": cfg.AgentChartVersion, "helm": map[string]interface{}{"releaseName": cfg.AgentReleaseName, "values": values}}, "syncPolicy": map[string]interface{}{"automated": map[string]interface{}{"prune": true, "selfHeal": true}, "syncOptions": []interface{}{"CreateNamespace=true"}}}},
 		},
 	}}
@@ -324,11 +324,48 @@ func (c *Controller) ensureArgoApplication(ctx context.Context, owner *unstructu
 func (c *Controller) ensureNodeProvider(ctx context.Context, owner *unstructured.Unstructured, cfg config) error {
 	existing, err := c.dynamic.Resource(nodeProviderGVR).Get(ctx, cfg.NodeProviderName, metav1.GetOptions{})
 	if err == nil {
-		return ownershipError("NodeProvider", existing, owner)
+		if err := ownershipError("NodeProvider", existing, owner); err != nil {
+			return err
+		}
+		return c.updateNodeProvider(ctx, existing, owner, cfg)
 	}
 	if !apierrors.IsNotFound(err) {
 		return err
 	}
+	desired, err := desiredNodeProvider(owner, cfg)
+	if err != nil {
+		return err
+	}
+	_, err = c.dynamic.Resource(nodeProviderGVR).Create(ctx, desired, metav1.CreateOptions{})
+	if err == nil {
+		klog.InfoS("created KubeVirt NodeProvider", "name", cfg.NodeProviderName, "cluster", cfg.ConnectedClusterName)
+	}
+	return err
+}
+
+func (c *Controller) updateNodeProvider(ctx context.Context, existing, owner *unstructured.Unstructured, cfg config) error {
+	desired, err := desiredNodeProvider(owner, cfg)
+	if err != nil {
+		return err
+	}
+	desiredSpec, _, _ := unstructured.NestedMap(desired.Object, "spec")
+	currentSpec, _, _ := unstructured.NestedMap(existing.Object, "spec")
+	if reflect.DeepEqual(currentSpec, desiredSpec) && reflect.DeepEqual(existing.GetLabels(), labelsFor(owner)) {
+		return nil
+	}
+	copy := existing.DeepCopy()
+	if err := unstructured.SetNestedMap(copy.Object, desiredSpec, "spec"); err != nil {
+		return err
+	}
+	copy.SetLabels(labelsFor(owner))
+	_, err = c.dynamic.Resource(nodeProviderGVR).Update(ctx, copy, metav1.UpdateOptions{})
+	if err == nil {
+		klog.InfoS("updated KubeVirt NodeProvider", "name", cfg.NodeProviderName, "cluster", cfg.ConnectedClusterName)
+	}
+	return err
+}
+
+func desiredNodeProvider(owner *unstructured.Unstructured, cfg config) (*unstructured.Unstructured, error) {
 	tpl := runtime.DeepCopyJSON(cfg.NodeProviderTemplate)
 	tpl["apiVersion"] = "management.loft.sh/v1"
 	tpl["kind"] = "NodeProvider"
@@ -340,13 +377,9 @@ func (c *Controller) ensureNodeProvider(ctx context.Context, owner *unstructured
 	meta["labels"] = labelsObject(owner)
 	tpl["metadata"] = meta
 	if err := unstructured.SetNestedMap(tpl, map[string]interface{}{"cluster": cfg.ConnectedClusterName, "namespace": cfg.NodeProviderNamespace}, "spec", "kubeVirt", "clusterRef"); err != nil {
-		return err
+		return nil, err
 	}
-	_, err = c.dynamic.Resource(nodeProviderGVR).Create(ctx, &unstructured.Unstructured{Object: tpl}, metav1.CreateOptions{})
-	if err == nil {
-		klog.InfoS("created KubeVirt NodeProvider", "name", cfg.NodeProviderName, "cluster", cfg.ConnectedClusterName)
-	}
-	return err
+	return &unstructured.Unstructured{Object: tpl}, nil
 }
 
 func (c *Controller) ready(ctx context.Context, obj *unstructured.Unstructured, cfg config) error {

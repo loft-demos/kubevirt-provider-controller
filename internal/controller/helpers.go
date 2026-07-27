@@ -50,6 +50,8 @@ func parseConfig(obj *unstructured.Unstructured) (config, error) {
 	}
 	if c.VCINamespace == "" {
 		c.VCINamespace = ns
+	} else if c.VCINamespace != ns {
+		return c, fmt.Errorf("spec.virtualCluster.namespace must match metadata.namespace")
 	}
 	if c.ConnectedClusterName == "" {
 		c.ConnectedClusterName = name
@@ -159,6 +161,25 @@ func conditionTrue(obj *unstructured.Unstructured, conditionType string) bool {
 		if c["type"] == conditionType && strings.EqualFold(fmt.Sprint(c["status"]), "true") {
 			return true
 		}
+	}
+	return false
+}
+
+func conditionObservedGenerationTrue(obj *unstructured.Unstructured, conditionType string) bool {
+	conditions, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
+	for _, raw := range conditions {
+		c, ok := raw.(map[string]interface{})
+		if !ok || c["type"] != conditionType || !strings.EqualFold(fmt.Sprint(c["status"]), "true") {
+			continue
+		}
+		observedGeneration, ok := c["observedGeneration"].(int64)
+		if !ok {
+			if observedGenerationFloat, floatOK := c["observedGeneration"].(float64); floatOK {
+				observedGeneration = int64(observedGenerationFloat)
+				ok = true
+			}
+		}
+		return ok && observedGeneration == obj.GetGeneration()
 	}
 	return false
 }

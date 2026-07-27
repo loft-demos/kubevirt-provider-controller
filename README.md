@@ -140,7 +140,7 @@ Create or adapt the example template and composite resource:
 ```bash
 kubectl apply -f config/samples/private-node-provider-template.yaml
 kubectl apply -f config/samples/local-kvm.yaml
-kubectl -n p-default get kubevirtprovidercluster local-kvm-provider -w
+kubectl -n p-platform get kubevirtprovidercluster local-kvm-provider -w
 ```
 
 See [local KVM validation](docs/local-kvm-validation.md) before treating an

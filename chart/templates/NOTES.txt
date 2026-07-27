@@ -5,5 +5,4 @@ Inspect the controller:
 
 Create a provider cluster:
   kubectl apply -f config/samples/local-kvm.yaml
-  kubectl -n p-default get kubevirtproviderclusters -w
-
+  kubectl -n p-platform get kubevirtproviderclusters -w

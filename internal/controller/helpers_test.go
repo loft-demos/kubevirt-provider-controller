@@ -52,6 +52,24 @@ func TestParseConfigRejectsUnsafeTTL(t *testing.T) {
 	}
 }
 
+func TestParseConfigRejectsCrossProjectVCINamespace(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{"name": "provider-a", "namespace": "p-platform"},
+		"spec": map[string]interface{}{
+			"virtualCluster": map[string]interface{}{
+				"namespace":   "p-default",
+				"templateRef": map[string]interface{}{"name": "private-kvm"},
+				"owner":       map[string]interface{}{"user": "admin"},
+			},
+			"agent":        map[string]interface{}{"chart": map[string]interface{}{"version": "4.11.0"}},
+			"nodeProvider": map[string]interface{}{"template": map[string]interface{}{"spec": map[string]interface{}{"kubeVirt": map[string]interface{}{}}}},
+		},
+	}}
+	if _, err := parseConfig(obj); err == nil {
+		t.Fatal("expected cross-project VCI namespace to be rejected")
+	}
+}
+
 func TestParseConfigRequiresExactlyOneOwner(t *testing.T) {
 	base := func(owner map[string]interface{}) *unstructured.Unstructured {
 		return &unstructured.Unstructured{Object: map[string]interface{}{
