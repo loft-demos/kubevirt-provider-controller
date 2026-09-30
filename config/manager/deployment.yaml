@@ -23,7 +23,7 @@ spec:
         - name: controller
           image: ghcr.io/loft-demos/kubevirt-provider-controller:dev
           imagePullPolicy: IfNotPresent
-          args: ["--workers=2", "--resync-period=30s"]
+          args: ["--workers=2", "--resync-period=5m"]
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}

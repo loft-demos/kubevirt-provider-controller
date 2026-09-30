@@ -25,7 +25,7 @@ rbac:
 
 controller:
   workers: 2
-  resyncPeriod: 30s
+  resyncPeriod: 5m
   logLevel: 2
 
 podAnnotations: {}

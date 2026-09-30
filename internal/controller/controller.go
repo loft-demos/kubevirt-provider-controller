@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -28,8 +29,15 @@ type Controller struct {
 	dynamic  dynamic.Interface
 	platform *platformClient
 	informer cache.SharedIndexInformer
+	// children watch the resources this controller creates, so their status
+	// changes (VCI online, agent initialized, NodeProvider available) reconcile
+	// the owning KubeVirtProviderCluster right away instead of on the next resync.
+	children []cache.SharedIndexInformer
 	queue    workqueue.RateLimitingInterface
 }
+
+// childGVRs are the resources created by this controller and labeled with its owner labels.
+var childGVRs = []schema.GroupVersionResource{vciGVR, clusterGVR, argoAppGVR, nodeProviderGVR}
 
 func New(cfg *rest.Config, dynamicClient dynamic.Interface, resync time.Duration) (*Controller, error) {
 	platform, err := newPlatformClient(cfg)
@@ -43,7 +51,23 @@ func New(cfg *rest.Config, dynamicClient dynamic.Interface, resync time.Duration
 	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: c.enqueue, UpdateFunc: func(_, obj interface{}) { c.enqueue(obj) }, DeleteFunc: c.enqueue,
 	})
-	return c, err
+	if err != nil {
+		return nil, err
+	}
+
+	childFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, resync, metav1.NamespaceAll, func(options *metav1.ListOptions) {
+		options.LabelSelector = managedByLabel + "=" + managedByValue
+	})
+	for _, gvr := range childGVRs {
+		child := childFactory.ForResource(gvr).Informer()
+		if _, err := child.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: c.enqueueOwner, UpdateFunc: func(_, obj interface{}) { c.enqueueOwner(obj) }, DeleteFunc: c.enqueueOwner,
+		}); err != nil {
+			return nil, err
+		}
+		c.children = append(c.children, child)
+	}
+	return c, nil
 }
 
 func SignalContext() context.Context {
@@ -54,8 +78,13 @@ func SignalContext() context.Context {
 
 func (c *Controller) Run(ctx context.Context, workers int) error {
 	defer c.queue.ShutDown()
+	synced := []cache.InformerSynced{c.informer.HasSynced}
 	go c.informer.Run(ctx.Done())
-	if !cache.WaitForCacheSync(ctx.Done(), c.informer.HasSynced) {
+	for _, child := range c.children {
+		go child.Run(ctx.Done())
+		synced = append(synced, child.HasSynced)
+	}
+	if !cache.WaitForCacheSync(ctx.Done(), synced...) {
 		return errors.New("timed out waiting for informer cache sync")
 	}
 	for i := 0; i < workers; i++ {
@@ -73,6 +102,28 @@ func (c *Controller) enqueue(obj interface{}) {
 		return
 	}
 	c.queue.Add(key)
+}
+
+// enqueueOwner queues the KubeVirtProviderCluster named by a child's owner labels.
+func (c *Controller) enqueueOwner(obj interface{}) {
+	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		obj = tombstone.Obj
+	}
+	child, ok := obj.(metav1.Object)
+	if !ok {
+		return
+	}
+	if key, ok := ownerKey(child.GetLabels()); ok {
+		c.queue.Add(key)
+	}
+}
+
+// ownerKey returns the namespace/name queue key of the owning KubeVirtProviderCluster.
+func ownerKey(labels map[string]string) (string, bool) {
+	if labels[managedByLabel] != managedByValue || labels[ownerNamespaceLabel] == "" || labels[ownerNameLabel] == "" {
+		return "", false
+	}
+	return labels[ownerNamespaceLabel] + "/" + labels[ownerNameLabel], true
 }
 
 func (c *Controller) worker(ctx context.Context) {
@@ -350,14 +401,15 @@ func (c *Controller) updateNodeProvider(ctx context.Context, existing, owner *un
 	}
 	desiredSpec, _, _ := unstructured.NestedMap(desired.Object, "spec")
 	currentSpec, _, _ := unstructured.NestedMap(existing.Object, "spec")
-	if reflect.DeepEqual(currentSpec, desiredSpec) && reflect.DeepEqual(existing.GetLabels(), labelsFor(owner)) {
+	labels := mergeNodeProviderLabels(existing.GetLabels(), desired.GetLabels())
+	if reflect.DeepEqual(currentSpec, desiredSpec) && reflect.DeepEqual(existing.GetLabels(), labels) {
 		return nil
 	}
 	copy := existing.DeepCopy()
 	if err := unstructured.SetNestedMap(copy.Object, desiredSpec, "spec"); err != nil {
 		return err
 	}
-	copy.SetLabels(labelsFor(owner))
+	copy.SetLabels(labels)
 	_, err = c.dynamic.Resource(nodeProviderGVR).Update(ctx, copy, metav1.UpdateOptions{})
 	if err == nil {
 		klog.InfoS("updated KubeVirt NodeProvider", "name", cfg.NodeProviderName, "cluster", cfg.ConnectedClusterName)
@@ -374,12 +426,17 @@ func desiredNodeProvider(owner *unstructured.Unstructured, cfg config) (*unstruc
 		meta = map[string]interface{}{}
 	}
 	meta["name"] = cfg.NodeProviderName
-	meta["labels"] = labelsObject(owner)
+	delete(meta, "labels")
 	tpl["metadata"] = meta
 	if err := unstructured.SetNestedMap(tpl, map[string]interface{}{"cluster": cfg.ConnectedClusterName, "namespace": cfg.NodeProviderNamespace}, "spec", "kubeVirt", "clusterRef"); err != nil {
 		return nil, err
 	}
-	return &unstructured.Unstructured{Object: tpl}, nil
+	if err := stampCapacityTypes(tpl, cfg.CapacityTypes); err != nil {
+		return nil, fmt.Errorf("stamp capacity types on NodeProvider nodeTypes: %w", err)
+	}
+	desired := &unstructured.Unstructured{Object: tpl}
+	desired.SetLabels(nodeProviderLabels(owner, cfg))
+	return desired, nil
 }
 
 func (c *Controller) ready(ctx context.Context, obj *unstructured.Unstructured, cfg config) error {

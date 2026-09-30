@@ -16,6 +16,23 @@ const (
 	managedByValue      = "kubevirt-provider-controller"
 	ownerNameLabel      = "infra.loft.sh/owner-name"
 	ownerNamespaceLabel = "infra.loft.sh/owner-namespace"
+
+	// Platform tenancy labels (loft-enterprise storagev1.TenantLabel and
+	// storagev1.TenantExclusiveHolderLabel). A resource carries at most one.
+	tenantOwnerLabel     = "tenant.vcluster.com/owner"
+	tenantExclusiveLabel = "tenant.vcluster.com/exclusive-to"
+
+	// capacityTypeProperty selects reserved and/or on-demand KubeVirt placement
+	// for a NodeType (loft-enterprise capacity.TypeProperty).
+	capacityTypeProperty = "kubevirt.vcluster.com/capacity-type"
+)
+
+const (
+	tenantAssignmentOwned     = "Owned"
+	tenantAssignmentExclusive = "Exclusive"
+
+	capacityTypeReserved = "reserved"
+	capacityTypeOnDemand = "on-demand"
 )
 
 type config struct {
@@ -40,4 +57,9 @@ type config struct {
 	NodeProviderName      string
 	NodeProviderNamespace string
 	NodeProviderTemplate  map[string]interface{}
+	// CapacityTypes is stamped onto every NodeType that does not set its own
+	// capacity-type property. Empty leaves Platform's on-demand default.
+	CapacityTypes    []string
+	TenantName       string
+	TenantAssignment string
 }

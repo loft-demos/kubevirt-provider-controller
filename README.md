@@ -38,6 +38,11 @@ Deletion is ordered in reverse: NodeProvider, Argo application, connected
 Cluster, and finally the VCI. Existing objects without this controller's exact
 ownership labels are never adopted or deleted.
 
+The controller watches the four resources it creates (selected by its
+`app.kubernetes.io/managed-by` label), so a status change on any of them
+reconciles the owning `KubeVirtProviderCluster` immediately. The informer
+resync (`--resync-period`, default `5m`) is only a safety net.
+
 ## Dual Platform identity
 
 The VCI intentionally has two Platform identities:
@@ -106,6 +111,46 @@ The controller marshals `parameterValues` to YAML and sets it as the generated
 defines are supported without editing the controller. For raw pass-through the
 legacy `spec.virtualCluster.parameters` string is still accepted, but the two
 fields are mutually exclusive; prefer `parameterValues`.
+
+## Tenants and capacity types
+
+These fields target the tenancy and KubeVirt capacity model in vCluster
+Platform 4.13 (alpha builds at the time of writing).
+
+- `spec.tenant.name` scopes the generated NodeProvider to one Platform Tenant.
+  `spec.tenant.assignment: Exclusive` (default) stamps
+  `tenant.vcluster.com/exclusive-to`: the platform owns the provider and lends it
+  to that tenant alone. `Owned` stamps `tenant.vcluster.com/owner`: the tenant
+  owns it. Without `spec.tenant` the provider is platform-owned and each
+  tenant's baseline rules decide who may use it. Labels other writers set on
+  the NodeProvider, such as Platform's projected scope keys, are preserved.
+- `spec.nodeProvider.capacityTypes` stamps
+  `kubevirt.vcluster.com/capacity-type` on every template NodeType that does not
+  set it. `on-demand` places VMs on shared hosts (the tenant cluster's own
+  nodes); `reserved` places them only on bare metal a tenant provisioned for VMs
+  into this cluster with the NodeClaim property
+  `join-kubevirt-infra.vcluster.com/provider-ref`. Platform prefers on-demand
+  when both are allowed.
+
+Provisioning bare metal for VMs into a Private Node tenant cluster is expected
+to work (the join reads `kube-system/kubeadm-config`, which vCluster private
+nodes create) but is not yet verified. Keep at least one `autoNodes` node in the
+provider tenant cluster regardless: the Platform agent must run before
+Platform can join any machine to it.
+
+## vCluster device operator
+
+The sample NodeProvider enables `deploy.vClusterDeviceOperator` and pins
+`0.2.0`; Platform's built-in default (`0.0.7`) predates the `Bridge` CRD. The
+operator patches the KubeVirt CR's `permittedHostDevices` and feature gates from
+the devices a `HostDevice` discovers, so do not also set those in the KubeVirt
+Helm values: Helm and the operator would overwrite each other.
+
+In a lab without GPUs the useful part is the `Bridge` CRD: see
+[config/samples/lab-vm-network.yaml](config/samples/lab-vm-network.yaml) to put
+VMs directly on a lab VLAN through a bridge NetworkAttachmentDefinition. Multus
+must be installed in the provider tenant cluster; Platform deploys Multus only
+for Metal3 providers.
 
 ## Install
 

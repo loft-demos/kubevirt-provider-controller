@@ -1,0 +1,50 @@
+# Put KubeVirt VMs directly on a lab VLAN instead of the pod network.
+#
+# Apply inside the KubeVirt provider tenant cluster (vcluster connect
+# local-kvm-provider), after the NodeProvider is Available so the vCluster
+# device operator (deploy.vClusterDeviceOperator in local-kvm.yaml) is running.
+# Multus must also be installed there: Platform only deploys Multus for Metal3
+# providers, not KubeVirt.
+#
+# Replace the trunk interface, VLAN ID, and namespace for the lab.
+apiVersion: devices.vcluster.com/v1alpha1
+kind: Bridge
+metadata:
+  name: br-vlan1000            # also the Linux interface name, 15 characters max
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  ports:
+    - name: eth1               # trunk interface on the KVM hosts
+      vlan:
+        id: 1000               # attaches eth1.1000, created if missing
+---
+# Bridge CNI attachment for the VMs. The NAD must live in the namespace the
+# VMs are created in: the NodeProvider's clusterRef namespace
+# (spec.nodeProvider.targetNamespace) with the default Provider namespace strategy.
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: lab-vlan1000
+  namespace: vcluster-platform
+spec:
+  config: |-
+    {
+      "cniVersion": "0.3.1",
+      "name": "lab-vlan1000",
+      "type": "bridge",
+      "bridge": "br-vlan1000",
+      "ipam": {}
+    }
+# Then point a NodeType at it in local-kvm.yaml (the guest gets its address
+# from the lab VLAN's DHCP, or from kubevirt.vcluster.com/network-data):
+#
+#   nodeTypes:
+#     - name: kvm-lab-vlan
+#       displayName: KVM VM on lab VLAN 1000
+#       maxCapacity: 4
+#       properties:
+#         kubevirt.vcluster.com/network-attachment-definition: vcluster-platform/lab-vlan1000
+#         kubevirt.vcluster.com/interface-binding: bridge
+#         # true replaces the pod network; false adds a second NIC
+#         kubevirt.vcluster.com/multus-default: "false"

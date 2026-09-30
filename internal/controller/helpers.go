@@ -124,7 +124,92 @@ func parseConfig(obj *unstructured.Unstructured) (config, error) {
 	if _, found, _ := unstructured.NestedMap(c.NodeProviderTemplate, "spec", "kubeVirt"); !found {
 		return c, fmt.Errorf("spec.nodeProvider.template.spec.kubeVirt is required")
 	}
+
+	capacityTypes, _, err := unstructured.NestedStringSlice(obj.Object, "spec", "nodeProvider", "capacityTypes")
+	if err != nil {
+		return c, fmt.Errorf("spec.nodeProvider.capacityTypes must be a list of strings: %w", err)
+	}
+	for _, capacityType := range capacityTypes {
+		if capacityType != capacityTypeReserved && capacityType != capacityTypeOnDemand {
+			return c, fmt.Errorf("spec.nodeProvider.capacityTypes: %q is not %q or %q", capacityType, capacityTypeReserved, capacityTypeOnDemand)
+		}
+	}
+	c.CapacityTypes = capacityTypes
+
+	c.TenantName = get("tenant", "name")
+	c.TenantAssignment = get("tenant", "assignment")
+	if c.TenantName != "" && c.TenantAssignment == "" {
+		c.TenantAssignment = tenantAssignmentExclusive
+	}
+	if c.TenantName == "" && c.TenantAssignment != "" {
+		return c, fmt.Errorf("spec.tenant.assignment requires spec.tenant.name")
+	}
+	if c.TenantAssignment != "" && c.TenantAssignment != tenantAssignmentOwned && c.TenantAssignment != tenantAssignmentExclusive {
+		return c, fmt.Errorf("spec.tenant.assignment must be %s or %s", tenantAssignmentOwned, tenantAssignmentExclusive)
+	}
 	return c, nil
+}
+
+// nodeProviderLabels returns the controller's ownership labels plus the Platform
+// tenancy label for the configured tenant, if any.
+func nodeProviderLabels(owner *unstructured.Unstructured, cfg config) map[string]string {
+	labels := labelsFor(owner)
+	switch cfg.TenantAssignment {
+	case tenantAssignmentOwned:
+		labels[tenantOwnerLabel] = cfg.TenantName
+	case tenantAssignmentExclusive:
+		labels[tenantExclusiveLabel] = cfg.TenantName
+	}
+	return labels
+}
+
+// mergeNodeProviderLabels keeps labels other writers (for example Platform's
+// projected tenant scope keys) set on an existing NodeProvider, sets the desired
+// labels, and drops tenancy labels the spec no longer asks for.
+func mergeNodeProviderLabels(current, desired map[string]string) map[string]string {
+	out := map[string]string{}
+	for key, value := range current {
+		if key == tenantOwnerLabel || key == tenantExclusiveLabel {
+			continue
+		}
+		out[key] = value
+	}
+	for key, value := range desired {
+		out[key] = value
+	}
+	return out
+}
+
+// stampCapacityTypes sets the capacity-type property on every NodeType in the
+// NodeProvider template that does not already set one.
+func stampCapacityTypes(tpl map[string]interface{}, capacityTypes []string) error {
+	if len(capacityTypes) == 0 {
+		return nil
+	}
+	nodeTypes, found, err := unstructured.NestedSlice(tpl, "spec", "kubeVirt", "nodeTypes")
+	if err != nil || !found {
+		return err
+	}
+	value := strings.Join(capacityTypes, ",")
+	for i, raw := range nodeTypes {
+		nodeType, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		properties, _, _ := unstructured.NestedStringMap(nodeType, "properties")
+		if properties == nil {
+			properties = map[string]string{}
+		}
+		if _, set := properties[capacityTypeProperty]; set {
+			continue
+		}
+		properties[capacityTypeProperty] = value
+		if err := unstructured.SetNestedStringMap(nodeType, properties, "properties"); err != nil {
+			return err
+		}
+		nodeTypes[i] = nodeType
+	}
+	return unstructured.SetNestedSlice(tpl, nodeTypes, "spec", "kubeVirt", "nodeTypes")
 }
 
 func labelsFor(owner *unstructured.Unstructured) map[string]string {

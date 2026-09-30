@@ -115,12 +115,43 @@ spec:
                         repoURL: {type: string, default: "https://charts.loft.sh"}
                         name: {type: string, default: vcluster-platform}
                         version: {type: string, minLength: 1}
+                tenant:
+                  type: object
+                  description: >-
+                    Platform Tenant the generated NodeProvider belongs to. When omitted, the
+                    NodeProvider is platform-owned and follows each tenant's baseline rules.
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                      minLength: 1
+                      description: Platform Tenant resource name.
+                    assignment:
+                      type: string
+                      enum: [Owned, Exclusive]
+                      default: Exclusive
+                      description: >-
+                        Exclusive stamps tenant.vcluster.com/exclusive-to (the platform owns the
+                        NodeProvider and lends it to this tenant alone). Owned stamps
+                        tenant.vcluster.com/owner (the tenant owns it).
                 nodeProvider:
                   type: object
                   required: [template]
                   properties:
                     name: {type: string}
                     targetNamespace: {type: string, default: vcluster-platform}
+                    capacityTypes:
+                      type: array
+                      description: >-
+                        KubeVirt capacity types stamped as kubevirt.vcluster.com/capacity-type on
+                        every template NodeType that does not set that property itself. reserved
+                        places VMs only on bare metal a tenant provisioned for VMs; on-demand
+                        places them on shared hosts. Platform prefers on-demand when both are set.
+                        When omitted, Platform defaults each NodeType to on-demand.
+                      items:
+                        type: string
+                        enum: [reserved, on-demand]
+                      x-kubernetes-list-type: set
                     template:
                       type: object
                       description: NodeProvider manifest; clusterRef is owned and overwritten by this controller.

@@ -32,9 +32,20 @@ spec:
       # Pin this to the exact vCluster Platform version under test. tokenSecretRef
       # requires a chart version that contains that feature.
       version: REPLACE_WITH_PLATFORM_VERSION
+  # Optional: scope the generated NodeProvider to one Platform Tenant.
+  # Exclusive (default) lends a platform-owned provider to the tenant; Owned
+  # makes the tenant its owner. Omit to leave the provider platform-shared.
+  # tenant:
+  #   name: REPLACE_WITH_PLATFORM_TENANT_NAME
+  #   assignment: Exclusive
   nodeProvider:
     name: local-kvm
     targetNamespace: vcluster-platform
+    # Stamped as kubevirt.vcluster.com/capacity-type on every NodeType below
+    # that does not set it. on-demand uses the tenant cluster's own nodes.
+    # Add reserved once bare metal is provisioned for VMs into this cluster
+    # (NodeClaim property join-kubevirt-infra.vcluster.com/provider-ref).
+    capacityTypes: [on-demand]
     template:
       spec:
         displayName: Local KVM passthrough
@@ -77,21 +88,16 @@ spec:
                         # Explicitly require /dev/kvm; never hide missing KVM by
                         # falling back to QEMU software emulation.
                         useEmulation: false
-                        featureGates:
-                          - GPU
-                          - DisableMDEVConfiguration
-                      permittedHostDevices:
-                        # GPU passthrough (config demo). externalResourceProvider means an
-                        # external NVIDIA GPU Operator device plugin advertises these. No
-                        # local GPU here, so no node advertises them and GPU-requesting VMs
-                        # stay Pending; the PCI IDs are real (pci.ids) for a credible demo.
-                        pciHostDevices:
-                          - externalResourceProvider: true
-                            pciVendorSelector: "10DE:2901"        # GB100 [B200]
-                            resourceName: nvidia.com/GB100_B200
-                          - externalResourceProvider: true
-                            pciVendorSelector: "10DE:3182"        # GB110 [B300 SXM6 AC]
-                            resourceName: nvidia.com/GB110_B300
+                      # No permittedHostDevices or GPU feature gates here: the
+                      # vCluster device operator (below) patches the KubeVirt CR
+                      # from the devices a HostDevice actually discovers. Setting
+                      # them in Helm values too makes Helm and the operator
+                      # overwrite each other.
+            vClusterDeviceOperator:
+              enabled: true
+              # Platform's built-in default is 0.0.7, which predates the
+              # Bridge CRD (v0.1.0). Confirm the published chart version.
+              version: 0.2.0
           virtualMachineTemplate:
             spec:
               runStrategy: Always

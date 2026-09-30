@@ -18,7 +18,7 @@ func main() {
 	var resync time.Duration
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig; defaults to in-cluster configuration")
 	flag.IntVar(&workers, "workers", 2, "Number of reconciliation workers")
-	flag.DurationVar(&resync, "resync-period", 30*time.Second, "Full informer resync period")
+	flag.DurationVar(&resync, "resync-period", 5*time.Minute, "Full informer resync period; child watches drive normal reconciliation")
 	klog.InitFlags(nil)
 	flag.Parse()
 
